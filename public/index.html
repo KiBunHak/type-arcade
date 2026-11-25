@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TypeArcade</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+  </head>
+  <body>
+    <header>
+      <h1>TypeArcade</h1>
+      <div id="user-bar" class="hidden">
+        <span id="welcome-text"></span>
+        <button id="logout-btn">Log Out</button>
+      </div>
+    </header>
+
+    <main>
+      <!-- Login & Register -->
+      <section id="auth-section" class="card auth-card">
+        <h2 id="auth-title">Login</h2>
+        <input
+          type="text"
+          id="username-input"
+          placeholder="Username (for new accounts)"
+          class="hidden"
+        />
+        <input type="email" id="email-input" placeholder="Email" />
+        <input
+          type="password"
+          id="password-input"
+          placeholder="Password (min 6 chars)"
+        />
+        <button id="auth-submit-btn">Login</button>
+
+        <div class="divider">— OR —</div>
+        <div
+          id="g_id_onload"
+          data-client_id="718354343165-mb9o638ubgb52geku6ac40o4cgr5poiq.apps.googleusercontent.com"
+          data-callback="handleGoogleLogin"
+        ></div>
+        <div
+          class="g_id_signin"
+          data-type="standard"
+          data-theme="filled_black"
+          data-width="300"
+        ></div>
+
+        <p id="auth-message"></p>
+        <p class="toggle-text">
+          <span id="toggle-prompt">New here?</span>
+          <a href="#" id="toggle-auth-mode">Create an account</a>
+        </p>
+      </section>
+
+      <!-- Logged-In Dashboard -->
+      <section id="app-section" class="hidden">
+        <!-- 1. Player Profile & Scores -->
+        <div class="card profile-card">
+          <div class="profile-header">
+            <div
+              id="profile-avatar"
+              class="avatar"
+              title="Click to change avatar"
+            >
+              ?
+            </div>
+            <div class="profile-info">
+              <div class="name-row">
+                <h2 id="profile-username">Player</h2>
+                <span id="profile-rank" class="rank-badge">🌱 Rookie</span>
+              </div>
+              <p id="profile-bio" class="bio-text">
+                No bio yet — click Edit Profile to add one!
+              </p>
+            </div>
+            <button id="edit-profile-btn" class="secondary-btn">
+              Edit Profile
+            </button>
+          </div>
+
+          <div class="stats-grid">
+            <div class="stat-box">
+              <span class="stat-label">Total Points</span>
+              <span id="stat-points" class="stat-value">0</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">Best WPM</span>
+              <span id="stat-wpm" class="stat-value">0</span>
+            </div>
+            <div class="stat-box">
+              <span class="stat-label">Games Played</span>
+              <span id="stat-games" class="stat-value">0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Leaderboard & Recent History -->
+        <div class="grid">
+          <div class="card">
+            <h3>Top Players (Leaderboard)</h3>
+            <ol id="leaderboard-list"></ol>
+          </div>
+          <div class="card">
+            <h3>Your Recent History</h3>
+            <ul id="history-list"></ul>
+          </div>
+        </div>
+
+        <!-- 3. Scroll Down: Choose a Game -->
+        <h2 class="section-title">Choose Your Game</h2>
+        <div class="grid game-picker">
+          <div class="card game-card active-card" data-game="speed-test">
+            <h3>⚡ Speed Test</h3>
+            <p class="muted">
+              Type sentences fast with live accuracy highlighting.
+            </p>
+            <button class="play-btn" onclick="selectGame('speed-test')">
+              Play Speed Test
+            </button>
+          </div>
+          <div class="card game-card" data-game="word-blaster">
+            <h3>🚀 Word Blaster</h3>
+            <p class="muted">
+              Blast incoming words in 30 seconds for combo points.
+            </p>
+            <button class="play-btn" onclick="selectGame('word-blaster')">
+              Play Word Blaster
+            </button>
+          </div>
+          <div class="card game-card" data-game="tic-tac-toe">
+            <h3>❌ Tic Tac Toe</h3>
+            <p class="muted">Outsmart the arcade AI to win +50 bonus points.</p>
+            <button class="play-btn" onclick="selectGame('tic-tac-toe')">
+              Play Tic Tac Toe
+            </button>
+          </div>
+          <div class="card game-card" data-game="chess">
+            <h3>♟️ Chess</h3>
+            <p class="muted">
+              Play full Chess vs AI (+100 pts) or 2-Player Pass & Play.
+            </p>
+            <button class="play-btn" onclick="selectGame('chess')">
+              Play Chess
+            </button>
+          </div>
+        </div>
+
+        <!-- Active Game Arena: Speed Test -->
+        <div id="game-speed-test" class="card">
+          <h2>⚡ Quick Speed Test</h2>
+          <p id="target-sentence" class="sentence"></p>
+          <input
+            type="text"
+            id="typing-input"
+            placeholder="Start typing the sentence above..."
+            autocomplete="off"
+          />
+          <p id="result-text"></p>
+        </div>
+
+        <!-- Active Game Arena: Word Blaster -->
+        <div id="game-word-blaster" class="card hidden">
+          <div class="blaster-top">
+            <h2>🚀 Word Blaster</h2>
+            <div class="blaster-hud">
+              <span>Time: <strong id="wb-time">30</strong>s</span>
+              <span>Score: <strong id="wb-score">0</strong></span>
+            </div>
+          </div>
+          <div id="wb-word-display" class="wb-word">Press Start!</div>
+          <input
+            type="text"
+            id="wb-input"
+            placeholder="Type the word above..."
+            autocomplete="off"
+            disabled
+          />
+          <button id="wb-start-btn">Start 30s Round</button>
+          <p id="wb-result"></p>
+        </div>
+
+        <!-- Active Game Arena: Tic Tac Toe -->
+        <div id="game-tic-tac-toe" class="card hidden">
+          <div class="blaster-top">
+            <h2>❌ Tic Tac Toe (vs AI)</h2>
+            <span id="ttt-status" class="ttt-status">Your turn (X)</span>
+          </div>
+          <div id="ttt-board" class="ttt-board"></div>
+          <div class="ttt-actions">
+            <button id="ttt-restart-btn">Restart Match</button>
+          </div>
+        </div>
+
+        <!-- Active Game Arena: Chess -->
+        <div id="game-chess" class="card hidden">
+          <div class="blaster-top">
+            <h2>♟️ Arcade Chess</h2>
+            <span id="chess-status" class="ttt-status">White to move</span>
+          </div>
+          <div id="chess-board" class="chess-board"></div>
+          <div class="chess-actions">
+            <button id="chess-mode-btn" class="secondary-btn">
+              Mode: vs AI
+            </button>
+            <button id="chess-undo-btn" class="secondary-btn">Undo Move</button>
+            <button id="chess-restart-btn">New Match</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Edit Profile & 60-Avatar Picker Modal -->
+    <div id="profile-modal" class="modal hidden">
+      <div class="modal-content card">
+        <div class="modal-header">
+          <h3>Edit Profile</h3>
+          <button id="close-modal-btn" class="close-btn">&times;</button>
+        </div>
+
+        <label class="modal-label" for="edit-username-input"
+          >Username (2–25 chars)</label
+        >
+        <input
+          type="text"
+          id="edit-username-input"
+          maxlength="25"
+          placeholder="Choose your display name..."
+        />
+
+        <label class="modal-label" for="bio-input"
+          >Your Bio (max 160 chars)</label
+        >
+        <textarea
+          id="bio-input"
+          rows="2"
+          maxlength="160"
+          placeholder="Write anything about yourself..."
+        ></textarea>
+
+        <label class="modal-label">Choose a Profile Picture (60 Avatars)</label>
+        <div id="avatar-grid" class="avatar-grid"></div>
+
+        <p
+          id="profile-modal-error"
+          style="color: #fda4af; font-size: 14px; margin: 8px 0 0"
+        ></p>
+
+        <div class="modal-actions">
+          <button id="cancel-profile-btn" class="secondary-btn">Cancel</button>
+          <button id="save-profile-btn">Save Profile</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
