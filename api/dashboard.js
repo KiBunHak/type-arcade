@@ -7,44 +7,71 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
+function buildStatBundle(rawUser, gamesPlayed = 0) {
+  const totalPoints = Number(
+    rawUser.totalpoints ?? rawUser.totalPoints ?? rawUser.points ?? 0
+  );
+  const bestWPM = Number(
+    rawUser.bestwpm ?? rawUser.bestWPM ?? rawUser.bestWpm ?? rawUser.wpm ?? 0
+  );
+  const games = Number(gamesPlayed ?? 0);
+
+  return {
+    totalpoints: totalPoints,
+    totalPoints,
+    Totalpoints: totalPoints,
+    TotalPoints: totalPoints,
+    total_points: totalPoints,
+    points: totalPoints,
+    Points: totalPoints,
+
+    bestwpm: bestWPM,
+    bestWPM,
+    bestWpm: bestWPM,
+    Bestwpm: bestWPM,
+    BestWPM: bestWPM,
+    BestWpm: bestWPM,
+    best_wpm: bestWPM,
+    wpm: bestWPM,
+    Wpm: bestWPM,
+    WPM: bestWPM,
+
+    gamesPlayed: games,
+    gamesplayed: games,
+    gamesPlay: games,
+    GamesPlayed: games,
+    Gamesplayed: games,
+    games_played: games,
+  };
+}
+
 function formatUser(rawUser, gamesPlayed = 0) {
   const username = rawUser.username || "Player";
   const bio = rawUser.bio ?? "";
   const avatar = rawUser.avatarurl ?? null;
-  const totalPoints = Number(rawUser.totalpoints ?? 0);
-  const bestWPM = Number(rawUser.bestwpm ?? 0);
-  const games = Number(gamesPlayed ?? 0);
+  const stats = buildStatBundle(rawUser, gamesPlayed);
 
   return {
     id: rawUser.id,
     username,
     Username: username,
     name: username,
+    Name: username,
     email: rawUser.email,
     bio,
     Bio: bio,
     avatarurl: avatar,
     avatarUrl: avatar,
+    avatarURL: avatar,
     avatar,
-    totalpoints: totalPoints,
-    totalPoints,
-    total_points: totalPoints,
-    points: totalPoints,
-    bestwpm: bestWPM,
-    bestWPM,
-    best_wpm: bestWPM,
-    wpm: bestWPM,
-    gamesPlayed: games,
-    gamesplayed: games,
-    games_played: games,
+    ...stats,
     createdat: rawUser.createdat,
   };
 }
 
 function formatLeaderboardEntry(row) {
   const username = row.username || "Player";
-  const points = Number(row.totalpoints ?? 0);
-  const wpm = Number(row.bestwpm ?? 0);
+  const stats = buildStatBundle(row, 0);
   const avatar = row.avatarurl ?? null;
 
   return {
@@ -52,18 +79,12 @@ function formatLeaderboardEntry(row) {
     username,
     Username: username,
     name: username,
+    Name: username,
     bio: row.bio ?? "",
     avatarurl: avatar,
     avatarUrl: avatar,
     avatar,
-    totalpoints: points,
-    totalPoints: points,
-    total_points: points,
-    points,
-    bestwpm: wpm,
-    bestWPM: wpm,
-    best_wpm: wpm,
-    wpm,
+    ...stats,
   };
 }
 
@@ -112,36 +133,41 @@ module.exports = async function handler(req, res) {
     const user = formatUser(rawUser, gamesPlayed);
     const leaderboard = leaderboardRes.rows.map(formatLeaderboardEntry);
 
-    const history = historyRes.rows.map((row) => ({
-      ...row,
-      userid: row.userid,
-      userId: row.userid,
-      gamemode: row.gamemode,
-      gameMode: row.gamemode,
-      pointsearned: Number(row.pointsearned ?? 0),
-      pointsEarned: Number(row.pointsearned ?? 0),
-      points: Number(row.pointsearned ?? 0),
-      wpm: Number(row.wpm ?? 0),
-      accuracy: Number(row.accuracy ?? 0),
-      playedat: row.playedat,
-      playedAt: row.playedat,
-    }));
+    const history = historyRes.rows.map((row) => {
+      const pts = Number(row.pointsearned ?? 0);
+      const wpm = Number(row.wpm ?? 0);
+      const acc = Number(row.accuracy ?? 0);
+      return {
+        ...row,
+        userid: row.userid,
+        userId: row.userid,
+        gamemode: row.gamemode,
+        gameMode: row.gamemode,
+        mode: row.gamemode,
+        pointsearned: pts,
+        pointsEarned: pts,
+        points: pts,
+        wpm,
+        WPM: wpm,
+        accuracy: acc,
+        playedat: row.playedat,
+        playedAt: row.playedat,
+      };
+    });
+
+    const stats = buildStatBundle(rawUser, gamesPlayed);
 
     return res.json({
       ...user,
       user,
       profile: user,
-      stats: {
-        totalPoints: user.totalPoints,
-        totalpoints: user.totalPoints,
-        bestWPM: user.bestWPM,
-        bestwpm: user.bestWPM,
-        gamesPlayed,
-        gamesplayed: gamesPlayed,
-      },
+      data: { user, stats, history, leaderboard },
+      stats,
       history,
       recentHistory: history,
+      games: history,
       leaderboard,
+      topPlayers: leaderboard,
     });
   } catch (err) {
     console.error("Dashboard route error:", err);
