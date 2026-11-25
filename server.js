@@ -49,12 +49,75 @@ function signUserToken(user) {
   );
 }
 
+async function handleGoogleLogin(req, res) {
+  try {
+    const { credential, idToken, token: bodyToken } = req.body || {};
+    const rawToken = credential || idToken || bodyToken;
+    if (!rawToken) {
+      return res.status(400).json({ error: "Missing Google credential token" });
+    }
+
+    const ticket = await googleClient.verifyIdToken({
+      idToken: rawToken,
+      audience: GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    const email = payload.email;
+    const picture = payload.picture || null;
+    const baseName =
+      (payload.name || email.split("@")[0] || "player")
+        .replace(/[^a-zA-Z0-9_]/g, "")
+        .slice(0, 20) || "player";
+
+    let found = await pool.query(
+      `SELECT id, username, email, totalpoints, bestwpm, bio, avatarurl, createdat
+       FROM users
+       WHERE LOWER(email) = LOWER($1)`,
+      [email]
+    );
+
+    let user = found.rows[0];
+    if (!user) {
+      const uniqueUsername = `${baseName}_${Math.floor(1000 + Math.random() * 9000)}`.slice(
+        0,
+        50
+      );
+      const randomHash = await bcrypt.hash(`${payload.sub}_${Date.now()}`, 10);
+      const inserted = await pool.query(
+        `INSERT INTO users (username, email, passwordhash, avatarurl)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, username, email, totalpoints, bestwpm, bio, avatarurl, createdat`,
+        [uniqueUsername, email, randomHash, picture]
+      );
+      user = inserted.rows[0];
+    } else if (picture && !user.avatarurl) {
+      const updated = await pool.query(
+        `UPDATE users SET avatarurl = $1 WHERE id = $2
+         RETURNING id, username, email, totalpoints, bestwpm, bio, avatarurl, createdat`,
+        [picture, user.id]
+      );
+      user = updated.rows[0];
+    }
+
+    const jwtToken = signUserToken(user);
+    return res.json({ token: jwtToken, user });
+  } catch (err) {
+    console.error("Google auth error:", err);
+    return res.status(401).json({ error: "Google authentication failed" });
+  }
+}
+
+app.post("/api/google-login", handleGoogleLogin);
+app.post("/api/auth/google", handleGoogleLogin);
+
 // Register with email/password
 app.post("/api/auth/register", async (req, res) => {
   try {
     const { username, email, password } = req.body;
     if (!username || !email || !password) {
-      return res.status(400).json({ error: "Username, email, and password are required" });
+      return res
+        .status(400)
+        .json({ error: "Username, email, and password are required" });
     }
 
     const existing = await pool.query(
@@ -112,61 +175,6 @@ app.post("/api/auth/login", async (req, res) => {
   } catch (err) {
     console.error("Login error:", err);
     return res.status(500).json({ error: "Database error during login" });
-  }
-});
-
-// Google Sign-In
-app.post("/api/auth/google", async (req, res) => {
-  try {
-    const { credential, idToken } = req.body;
-    const rawToken = credential || idToken;
-    if (!rawToken) {
-      return res.status(400).json({ error: "Missing Google credential token" });
-    }
-
-    const ticket = await googleClient.verifyIdToken({
-      idToken: rawToken,
-      audience: GOOGLE_CLIENT_ID,
-    });
-    const payload = ticket.getPayload();
-    const email = payload.email;
-    const picture = payload.picture || null;
-    const baseName = (payload.name || email.split("@")[0] || "player")
-      .replace(/[^a-zA-Z0-9_]/g, "")
-      .slice(0, 20) || "player";
-
-    let found = await pool.query(
-      `SELECT id, username, email, totalpoints, bestwpm, bio, avatarurl, createdat
-       FROM users
-       WHERE LOWER(email) = LOWER($1)`,
-      [email]
-    );
-
-    let user = found.rows[0];
-    if (!user) {
-      const uniqueUsername = `${baseName}_${Math.floor(1000 + Math.random() * 9000)}`.slice(0, 50);
-      const randomHash = await bcrypt.hash(`${payload.sub}_${Date.now()}`, 10);
-      const inserted = await pool.query(
-        `INSERT INTO users (username, email, passwordhash, avatarurl)
-         VALUES ($1, $2, $3, $4)
-         RETURNING id, username, email, totalpoints, bestwpm, bio, avatarurl, createdat`,
-        [uniqueUsername, email, randomHash, picture]
-      );
-      user = inserted.rows[0];
-    } else if (picture && !user.avatarurl) {
-      const updated = await pool.query(
-        `UPDATE users SET avatarurl = $1 WHERE id = $2
-         RETURNING id, username, email, totalpoints, bestwpm, bio, avatarurl, createdat`,
-        [picture, user.id]
-      );
-      user = updated.rows[0];
-    }
-
-    const token = signUserToken(user);
-    return res.json({ token, user });
-  } catch (err) {
-    console.error("Google auth error:", err);
-    return res.status(401).json({ error: "Google authentication failed" });
   }
 });
 
