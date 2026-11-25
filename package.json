@@ -16,6 +16,6 @@
     "express": "^5.3.0",
     "google-auth-library": "^11.3.4",
     "jsonwebtoken": "^9.0.3",
-    "pg": "^12.8.1"
+    "pg": "^8.23.1"
   }
 }
