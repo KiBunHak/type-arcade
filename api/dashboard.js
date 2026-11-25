@@ -7,6 +7,31 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
+function buildUserPayload(rawUser, gamesPlayed = 0) {
+  const username = rawUser.username || "Player";
+  const totalPoints = Number(rawUser.totalpoints ?? 0);
+  const bestWPM = Number(rawUser.bestwpm ?? 0);
+  const bio = rawUser.bio ?? "";
+  const avatarUrl = rawUser.avatarurl ?? null;
+
+  return {
+    id: rawUser.id,
+    username,
+    Username: username,
+    name: username,
+    email: rawUser.email,
+    bio,
+    avatarurl: avatarUrl,
+    avatarUrl,
+    totalpoints: totalPoints,
+    totalPoints,
+    bestwpm: bestWPM,
+    bestWPM,
+    gamesPlayed,
+    createdat: rawUser.createdat,
+  };
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== "GET") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -48,23 +73,45 @@ module.exports = async function handler(req, res) {
        LIMIT 10`
     );
 
-    const user = {
-      ...rawUser,
-      totalPoints: rawUser.totalpoints ?? 0,
-      bestWPM: rawUser.bestwpm ?? 0,
-      gamesPlayed: historyRes.rows.length,
-    };
+    const gamesPlayed = historyRes.rows.length;
+    const user = buildUserPayload(rawUser, gamesPlayed);
+
+    const history = historyRes.rows.map((row) => ({
+      ...row,
+      userid: row.userid,
+      userId: row.userid,
+      gamemode: row.gamemode,
+      gameMode: row.gamemode,
+      pointsearned: Number(row.pointsearned ?? 0),
+      pointsEarned: Number(row.pointsearned ?? 0),
+      playedat: row.playedat,
+      playedAt: row.playedat,
+    }));
+
+    const leaderboard = leaderboardRes.rows.map((row) => ({
+      id: row.id,
+      username: row.username,
+      Username: row.username,
+      name: row.username,
+      totalpoints: Number(row.totalpoints ?? 0),
+      totalPoints: Number(row.totalpoints ?? 0),
+      bestwpm: Number(row.bestwpm ?? 0),
+      bestWPM: Number(row.bestwpm ?? 0),
+      avatarurl: row.avatarurl ?? null,
+      avatarUrl: row.avatarurl ?? null,
+    }));
 
     return res.json({
+      ...user,
       user,
       stats: {
-        totalPoints: rawUser.totalpoints ?? 0,
-        bestWPM: rawUser.bestwpm ?? 0,
-        gamesPlayed: historyRes.rows.length,
+        totalPoints: user.totalPoints,
+        bestWPM: user.bestWPM,
+        gamesPlayed,
       },
-      history: historyRes.rows,
-      recentHistory: historyRes.rows,
-      leaderboard: leaderboardRes.rows,
+      history,
+      recentHistory: history,
+      leaderboard,
     });
   } catch (err) {
     console.error("Dashboard route error:", err);
