@@ -7,12 +7,13 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
-function buildUserPayload(rawUser, gamesPlayed = 0) {
+function formatUser(rawUser, gamesPlayed = 0) {
   const username = rawUser.username || "Player";
+  const bio = rawUser.bio ?? "";
+  const avatar = rawUser.avatarurl ?? null;
   const totalPoints = Number(rawUser.totalpoints ?? 0);
   const bestWPM = Number(rawUser.bestwpm ?? 0);
-  const bio = rawUser.bio ?? "";
-  const avatarUrl = rawUser.avatarurl ?? null;
+  const games = Number(gamesPlayed ?? 0);
 
   return {
     id: rawUser.id,
@@ -21,14 +22,48 @@ function buildUserPayload(rawUser, gamesPlayed = 0) {
     name: username,
     email: rawUser.email,
     bio,
-    avatarurl: avatarUrl,
-    avatarUrl,
+    Bio: bio,
+    avatarurl: avatar,
+    avatarUrl: avatar,
+    avatar,
     totalpoints: totalPoints,
     totalPoints,
+    total_points: totalPoints,
+    points: totalPoints,
     bestwpm: bestWPM,
     bestWPM,
-    gamesPlayed,
+    best_wpm: bestWPM,
+    wpm: bestWPM,
+    gamesPlayed: games,
+    gamesplayed: games,
+    games_played: games,
     createdat: rawUser.createdat,
+  };
+}
+
+function formatLeaderboardEntry(row) {
+  const username = row.username || "Player";
+  const points = Number(row.totalpoints ?? 0);
+  const wpm = Number(row.bestwpm ?? 0);
+  const avatar = row.avatarurl ?? null;
+
+  return {
+    id: row.id,
+    username,
+    Username: username,
+    name: username,
+    bio: row.bio ?? "",
+    avatarurl: avatar,
+    avatarUrl: avatar,
+    avatar,
+    totalpoints: points,
+    totalPoints: points,
+    total_points: points,
+    points,
+    bestwpm: wpm,
+    bestWPM: wpm,
+    best_wpm: wpm,
+    wpm,
   };
 }
 
@@ -67,14 +102,15 @@ module.exports = async function handler(req, res) {
     );
 
     const leaderboardRes = await pool.query(
-      `SELECT id, username, totalpoints, bestwpm, avatarurl
+      `SELECT id, username, totalpoints, bestwpm, bio, avatarurl
        FROM users
        ORDER BY totalpoints DESC, bestwpm DESC
        LIMIT 10`
     );
 
     const gamesPlayed = historyRes.rows.length;
-    const user = buildUserPayload(rawUser, gamesPlayed);
+    const user = formatUser(rawUser, gamesPlayed);
+    const leaderboard = leaderboardRes.rows.map(formatLeaderboardEntry);
 
     const history = historyRes.rows.map((row) => ({
       ...row,
@@ -84,30 +120,24 @@ module.exports = async function handler(req, res) {
       gameMode: row.gamemode,
       pointsearned: Number(row.pointsearned ?? 0),
       pointsEarned: Number(row.pointsearned ?? 0),
+      points: Number(row.pointsearned ?? 0),
+      wpm: Number(row.wpm ?? 0),
+      accuracy: Number(row.accuracy ?? 0),
       playedat: row.playedat,
       playedAt: row.playedat,
-    }));
-
-    const leaderboard = leaderboardRes.rows.map((row) => ({
-      id: row.id,
-      username: row.username,
-      Username: row.username,
-      name: row.username,
-      totalpoints: Number(row.totalpoints ?? 0),
-      totalPoints: Number(row.totalpoints ?? 0),
-      bestwpm: Number(row.bestwpm ?? 0),
-      bestWPM: Number(row.bestwpm ?? 0),
-      avatarurl: row.avatarurl ?? null,
-      avatarUrl: row.avatarurl ?? null,
     }));
 
     return res.json({
       ...user,
       user,
+      profile: user,
       stats: {
         totalPoints: user.totalPoints,
+        totalpoints: user.totalPoints,
         bestWPM: user.bestWPM,
+        bestwpm: user.bestWPM,
         gamesPlayed,
+        gamesplayed: gamesPlayed,
       },
       history,
       recentHistory: history,
