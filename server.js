@@ -10,6 +10,9 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 app.use(express.static("public"));
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
 
 const JWT_SECRET = process.env.JWT_SECRET || "change_this_to_a_long_secret_key";
 const GOOGLE_CLIENT_ID =
