@@ -49,6 +49,96 @@ function signUserToken(user) {
   );
 }
 
+function formatUser(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    username: row.username,
+    email: row.email,
+    totalpoints: row.totalpoints ?? 0,
+    totalPoints: row.totalpoints ?? 0,
+    bestwpm: row.bestwpm ?? 0,
+    bestWPM: row.bestwpm ?? 0,
+    bio: row.bio ?? null,
+    avatarurl: row.avatarurl ?? null,
+    avatarUrl: row.avatarurl ?? null,
+    createdat: row.createdat,
+  };
+}
+
+async function handleRegister(req, res) {
+  try {
+    const { username, email, password } = req.body || {};
+    if (!username || !email || !password) {
+      return res
+        .status(400)
+        .json({ error: "Username, email, and password are required" });
+    }
+
+    const cleanUsername = String(username).trim();
+    const cleanEmail = String(email).trim();
+
+    const existing = await pool.query(
+      "SELECT id FROM users WHERE LOWER(email) = LOWER($1) OR LOWER(username) = LOWER($2)",
+      [cleanEmail, cleanUsername]
+    );
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: "Username or email already exists" });
+    }
+
+    const passwordHash = await bcrypt.hash(String(password), 10);
+    const result = await pool.query(
+      `INSERT INTO users (username, email, passwordhash)
+       VALUES ($1, $2, $3)
+       RETURNING id, username, email, totalpoints, bestwpm, bio, avatarurl, createdat`,
+      [cleanUsername, cleanEmail, passwordHash]
+    );
+
+    const user = formatUser(result.rows[0]);
+    const token = signUserToken(user);
+    return res.status(201).json({ token, user });
+  } catch (err) {
+    console.error("Register error:", err);
+    return res.status(500).json({ error: "Database error during registration" });
+  }
+}
+
+async function handleEmailLogin(req, res) {
+  try {
+    const { email, username, password } = req.body || {};
+    const identifier = String(email || username || "").trim();
+    if (!identifier || !password) {
+      return res
+        .status(400)
+        .json({ error: "Email/username and password are required" });
+    }
+
+    const result = await pool.query(
+      `SELECT id, username, email, passwordhash, totalpoints, bestwpm, bio, avatarurl, createdat
+       FROM users
+       WHERE LOWER(email) = LOWER($1) OR LOWER(username) = LOWER($1)`,
+      [identifier]
+    );
+
+    const rawUser = result.rows[0];
+    if (!rawUser || !rawUser.passwordhash) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const valid = await bcrypt.compare(String(password), rawUser.passwordhash);
+    if (!valid) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    const user = formatUser(rawUser);
+    const token = signUserToken(user);
+    return res.json({ token, user });
+  } catch (err) {
+    console.error("Login error:", err);
+    return res.status(500).json({ error: "Database error during login" });
+  }
+}
+
 async function handleGoogleLogin(req, res) {
   try {
     const { credential, idToken, token: bodyToken } = req.body || {};
@@ -76,8 +166,8 @@ async function handleGoogleLogin(req, res) {
       [email]
     );
 
-    let user = found.rows[0];
-    if (!user) {
+    let row = found.rows[0];
+    if (!row) {
       const uniqueUsername = `${baseName}_${Math.floor(1000 + Math.random() * 9000)}`.slice(
         0,
         50
@@ -89,16 +179,17 @@ async function handleGoogleLogin(req, res) {
          RETURNING id, username, email, totalpoints, bestwpm, bio, avatarurl, createdat`,
         [uniqueUsername, email, randomHash, picture]
       );
-      user = inserted.rows[0];
-    } else if (picture && !user.avatarurl) {
+      row = inserted.rows[0];
+    } else if (picture && !row.avatarurl) {
       const updated = await pool.query(
         `UPDATE users SET avatarurl = $1 WHERE id = $2
          RETURNING id, username, email, totalpoints, bestwpm, bio, avatarurl, createdat`,
-        [picture, user.id]
+        [picture, row.id]
       );
-      user = updated.rows[0];
+      row = updated.rows[0];
     }
 
+    const user = formatUser(row);
     const jwtToken = signUserToken(user);
     return res.json({ token: jwtToken, user });
   } catch (err) {
@@ -107,76 +198,12 @@ async function handleGoogleLogin(req, res) {
   }
 }
 
+app.post("/api/login", handleEmailLogin);
+app.post("/api/auth/login", handleEmailLogin);
 app.post("/api/google-login", handleGoogleLogin);
 app.post("/api/auth/google", handleGoogleLogin);
-
-// Register with email/password
-app.post("/api/auth/register", async (req, res) => {
-  try {
-    const { username, email, password } = req.body;
-    if (!username || !email || !password) {
-      return res
-        .status(400)
-        .json({ error: "Username, email, and password are required" });
-    }
-
-    const existing = await pool.query(
-      "SELECT id FROM users WHERE LOWER(email) = LOWER($1) OR LOWER(username) = LOWER($2)",
-      [email.trim(), username.trim()]
-    );
-    if (existing.rows.length > 0) {
-      return res.status(409).json({ error: "Username or email already exists" });
-    }
-
-    const passwordHash = await bcrypt.hash(password, 10);
-    const result = await pool.query(
-      `INSERT INTO users (username, email, passwordhash)
-       VALUES ($1, $2, $3)
-       RETURNING id, username, email, totalpoints, bestwpm, bio, avatarurl, createdat`,
-      [username.trim(), email.trim(), passwordHash]
-    );
-
-    const user = result.rows[0];
-    const token = signUserToken(user);
-    return res.status(201).json({ token, user });
-  } catch (err) {
-    console.error("Register error:", err);
-    return res.status(500).json({ error: "Database error during registration" });
-  }
-});
-
-// Login with email/password
-app.post("/api/auth/login", async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ error: "Email and password are required" });
-    }
-
-    const result = await pool.query(
-      `SELECT id, username, email, passwordhash, totalpoints, bestwpm, bio, avatarurl, createdat
-       FROM users
-       WHERE LOWER(email) = LOWER($1)`,
-      [email.trim()]
-    );
-    const user = result.rows[0];
-    if (!user || !user.passwordhash) {
-      return res.status(401).json({ error: "Invalid email or password" });
-    }
-
-    const valid = await bcrypt.compare(password, user.passwordhash);
-    if (!valid) {
-      return res.status(401).json({ error: "Invalid email or password" });
-    }
-
-    delete user.passwordhash;
-    const token = signUserToken(user);
-    return res.json({ token, user });
-  } catch (err) {
-    console.error("Login error:", err);
-    return res.status(500).json({ error: "Database error during login" });
-  }
-});
+app.post("/api/register", handleRegister);
+app.post("/api/auth/register", handleRegister);
 
 // Current user profile
 app.get("/api/me", authMiddleware, async (req, res) => {
@@ -189,7 +216,7 @@ app.get("/api/me", authMiddleware, async (req, res) => {
     if (!result.rows[0]) {
       return res.status(404).json({ error: "User not found" });
     }
-    return res.json({ user: result.rows[0] });
+    return res.json({ user: formatUser(result.rows[0]) });
   } catch (err) {
     console.error("Profile fetch error:", err);
     return res.status(500).json({ error: "Database error" });
@@ -199,7 +226,11 @@ app.get("/api/me", authMiddleware, async (req, res) => {
 // Update profile bio / username
 app.put("/api/profile", authMiddleware, async (req, res) => {
   try {
-    const { username, bio, avatarurl } = req.body;
+    const body = req.body || {};
+    const username = body.username ?? null;
+    const bio = body.bio ?? null;
+    const avatarurl = body.avatarurl ?? body.avatarUrl ?? null;
+
     const result = await pool.query(
       `UPDATE users
        SET username = COALESCE($1, username),
@@ -207,9 +238,9 @@ app.put("/api/profile", authMiddleware, async (req, res) => {
            avatarurl = COALESCE($3, avatarurl)
        WHERE id = $4
        RETURNING id, username, email, totalpoints, bestwpm, bio, avatarurl, createdat`,
-      [username || null, bio ?? null, avatarurl || null, req.user.id]
+      [username, bio, avatarurl, req.user.id]
     );
-    return res.json({ user: result.rows[0] });
+    return res.json({ user: formatUser(result.rows[0]) });
   } catch (err) {
     console.error("Profile update error:", err);
     return res.status(500).json({ error: "Failed to update profile" });
@@ -220,11 +251,11 @@ app.put("/api/profile", authMiddleware, async (req, res) => {
 app.post("/api/games", authMiddleware, async (req, res) => {
   const client = await pool.connect();
   try {
-    const { gamemode, wpm, accuracy, pointsearned } = req.body;
-    const safeMode = String(gamemode || "standard").slice(0, 50);
-    const safeWpm = Number(wpm) || 0;
-    const safeAccuracy = Number(accuracy) || 0;
-    const safePoints = Number(pointsearned) || 0;
+    const body = req.body || {};
+    const safeMode = String(body.gamemode ?? body.gameMode ?? "standard").slice(0, 50);
+    const safeWpm = Number(body.wpm ?? 0) || 0;
+    const safeAccuracy = Number(body.accuracy ?? 0) || 0;
+    const safePoints = Number(body.pointsearned ?? body.pointsEarned ?? 0) || 0;
 
     await client.query("BEGIN");
     const gameRes = await client.query(
@@ -244,7 +275,21 @@ app.post("/api/games", authMiddleware, async (req, res) => {
     );
 
     await client.query("COMMIT");
-    return res.status(201).json({ match: gameRes.rows[0], user: userRes.rows[0] });
+    const m = gameRes.rows[0];
+    return res.status(201).json({
+      match: {
+        ...m,
+        userid: m.userid,
+        userId: m.userid,
+        gamemode: m.gamemode,
+        gameMode: m.gamemode,
+        pointsearned: m.pointsearned,
+        pointsEarned: m.pointsearned,
+        playedat: m.playedat,
+        playedAt: m.playedat,
+      },
+      user: formatUser(userRes.rows[0]),
+    });
   } catch (err) {
     await client.query("ROLLBACK");
     console.error("Save game error:", err);
@@ -281,7 +326,7 @@ app.get("/api/leaderboard", async (req, res) => {
        ORDER BY totalpoints DESC, bestwpm DESC
        LIMIT 20`
     );
-    return res.json({ leaderboard: result.rows });
+    return res.json({ leaderboard: result.rows.map(formatUser) });
   } catch (err) {
     console.error("Leaderboard error:", err);
     return res.status(500).json({ error: "Failed to fetch leaderboard" });
