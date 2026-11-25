@@ -14,6 +14,31 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
+function buildUserPayload(rawUser, gamesPlayed = 0) {
+  const username = rawUser.username || "Player";
+  const totalPoints = Number(rawUser.totalpoints ?? 0);
+  const bestWPM = Number(rawUser.bestwpm ?? 0);
+  const bio = rawUser.bio ?? "";
+  const avatarUrl = rawUser.avatarurl ?? null;
+
+  return {
+    id: rawUser.id,
+    username,
+    Username: username,
+    name: username,
+    email: rawUser.email,
+    bio,
+    avatarurl: avatarUrl,
+    avatarUrl,
+    totalpoints: totalPoints,
+    totalPoints,
+    bestwpm: bestWPM,
+    bestWPM,
+    gamesPlayed,
+    createdat: rawUser.createdat,
+  };
+}
+
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -44,8 +69,8 @@ module.exports = async function handler(req, res) {
       [email]
     );
 
-    let user = found.rows[0];
-    if (!user) {
+    let rawUser = found.rows[0];
+    if (!rawUser) {
       const uniqueUsername = `${baseName}_${Math.floor(1000 + Math.random() * 9000)}`.slice(
         0,
         50
@@ -57,23 +82,34 @@ module.exports = async function handler(req, res) {
          RETURNING id, username, email, totalpoints, bestwpm, bio, avatarurl, createdat`,
         [uniqueUsername, email, randomHash, picture]
       );
-      user = inserted.rows[0];
-    } else if (picture && !user.avatarurl) {
+      rawUser = inserted.rows[0];
+    } else if (picture && !rawUser.avatarurl) {
       const updated = await pool.query(
         `UPDATE users SET avatarurl = $1 WHERE id = $2
          RETURNING id, username, email, totalpoints, bestwpm, bio, avatarurl, createdat`,
-        [picture, user.id]
+        [picture, rawUser.id]
       );
-      user = updated.rows[0];
+      rawUser = updated.rows[0];
     }
 
+    const countRes = await pool.query(
+      "SELECT COUNT(*)::int AS count FROM gamehistory WHERE userid = $1",
+      [rawUser.id]
+    );
+    const gamesPlayed = countRes.rows[0]?.count ?? 0;
+
+    const user = buildUserPayload(rawUser, gamesPlayed);
     const jwtToken = jwt.sign(
       { id: user.id, username: user.username, email: user.email },
       JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    return res.json({ token: jwtToken, user });
+    return res.json({
+      token: jwtToken,
+      ...user,
+      user,
+    });
   } catch (err) {
     console.error("Google login route error:", err);
     return res.status(401).json({ error: "Google authentication failed" });
