@@ -8,7 +8,7 @@ const pool = new Pool({
 });
 
 module.exports = async function handler(req, res) {
-  if (req.method !== "PUT" && req.method !== "POST") {
+  if (req.method !== "PUT" && req.method !== "POST" && req.method !== "PATCH") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
@@ -27,14 +27,14 @@ module.exports = async function handler(req, res) {
         ? body.username.trim().slice(0, 25)
         : null;
 
-    const rawBio = body.bio ?? null;
+    const rawBio = body.bio ?? body.Bio ?? null;
     const nextBio =
       rawBio === null || rawBio === undefined
         ? null
         : String(rawBio).slice(0, 160);
 
     const rawAvatar =
-      body.avatarurl ?? body.avatarUrl ?? body.avatar ?? null;
+      body.avatarurl ?? body.avatarUrl ?? body.avatar ?? body.avatarURL ?? null;
     const nextAvatar =
       rawAvatar === null || rawAvatar === undefined
         ? null
@@ -55,13 +55,46 @@ module.exports = async function handler(req, res) {
       return res.status(404).json({ error: "User not found" });
     }
 
+    const countRes = await pool.query(
+      "SELECT COUNT(*)::int AS count FROM gamehistory WHERE userid = $1",
+      [rawUser.id]
+    );
+    const gamesPlayed = countRes.rows[0]?.count ?? 0;
+
+    const username = rawUser.username || "Player";
+    const bio = rawUser.bio ?? "";
+    const avatar = rawUser.avatarurl ?? null;
+    const totalPoints = Number(rawUser.totalpoints ?? 0);
+    const bestWPM = Number(rawUser.bestwpm ?? 0);
+
+    const user = {
+      id: rawUser.id,
+      username,
+      Username: username,
+      name: username,
+      email: rawUser.email,
+      bio,
+      Bio: bio,
+      avatarurl: avatar,
+      avatarUrl: avatar,
+      avatar,
+      totalpoints: totalPoints,
+      totalPoints,
+      total_points: totalPoints,
+      points: totalPoints,
+      bestwpm: bestWPM,
+      bestWPM,
+      best_wpm: bestWPM,
+      wpm: bestWPM,
+      gamesPlayed,
+      gamesplayed: gamesPlayed,
+      createdat: rawUser.createdat,
+    };
+
     return res.json({
-      user: {
-        ...rawUser,
-        avatarUrl: rawUser.avatarurl,
-        totalPoints: rawUser.totalpoints ?? 0,
-        bestWPM: rawUser.bestwpm ?? 0,
-      },
+      ...user,
+      user,
+      profile: user,
     });
   } catch (err) {
     console.error("Profile update error:", err);
